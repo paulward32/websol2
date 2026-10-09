@@ -1,5 +1,5 @@
 from pathlib import Path
-import re,html,json,shutil,hashlib
+import re,html,json,shutil,hashlib,urllib.request
 ROOT=Path(__file__).parent
 OUT=ROOT/'dist'
 source=(ROOT/'content.md').read_text()
@@ -243,4 +243,24 @@ enquiry_worker+='''\n\nexport default {
 };
 '''
 (OUT/'_worker.js').write_text(enquiry_worker)
+
+assets_dir=OUT/'assets'
+assets_dir.mkdir(parents=True,exist_ok=True)
+asset_sources={
+ 'logo.png':'https://websolutionsydney.com.au/logo.png',
+ 'favicon.png':'https://websolutionsydney.com.au/logo.png',
+ 'apple-touch-icon.png':'https://websolutionsydney.com.au/logo.png',
+ 'sydney.jpg':'https://images.unsplash.com/photo-1523428096881-5bd79d043006?w=1800&h=1011&fit=crop',
+}
+for name,url in asset_sources.items():
+ target=assets_dir/name
+ if target.exists() and target.stat().st_size>0:
+  continue
+ try:
+  req=urllib.request.Request(url,headers={'User-Agent':'Mozilla/5.0'})
+  with urllib.request.urlopen(req,timeout=30) as r:
+   target.write_bytes(r.read())
+ except Exception as e:
+  print('Warning: could not download',name,'-',e)
+
 print('Generated',len(pages),'pages')

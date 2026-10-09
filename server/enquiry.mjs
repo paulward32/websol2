@@ -1,7 +1,23 @@
 const maxBytes = 20000;
 
+function corsHeaders() {
+  return {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Client-Info, Apikey',
+  };
+}
+
 function json(body, status = 200) {
-  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+      ...corsHeaders(),
+    },
+  });
 }
 
 async function boundedBody(request) {
@@ -40,6 +56,7 @@ function validate(input) {
     data[key] = input[key].trim();
     if (data[key].length < minimum || data[key].length > maximum) return null;
   }
+  if (typeof input.service === 'string' && input.service.length <= 100) data.service = input.service.trim();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.email)) return null;
   if (/[\r\n\u0000]/.test(data.name + data.email)) return null;
   if (!/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(data.requestId)) return null;
@@ -47,9 +64,10 @@ function validate(input) {
 }
 
 export async function handleEnquiry(request, env, fetcher = fetch) {
+  if (request.method === 'OPTIONS') return new Response(null, { status: 200, headers: corsHeaders() });
   if (!['GET', 'POST'].includes(request.method)) return json({ message: 'Method not allowed.' }, 405);
   const config = configuration(env);
-  if (request.method === 'GET') return json(config ? { enabled: true } : { enabled: false });
+  if (request.method === 'GET') return json({ enabled: Boolean(config) });
   if (!config) return json({ message: 'Direct sending is unavailable. Please email ryan@websolutionsydney.com.au.' }, 503);
   if (!/^application\/json(?:\s*;|$)/i.test(request.headers.get('content-type') || '')) return json({ message: 'Unsupported request format.' }, 415);
   let input;
@@ -57,7 +75,7 @@ export async function handleEnquiry(request, env, fetcher = fetch) {
   catch (error) { return json({ message: 'Please check the form and shorten your message if needed.' }, error.message === 'too_large' ? 413 : 400); }
   const data = validate(input);
   if (!data) return json({ message: 'Please check the form fields and try again.' }, 400);
-  const text = `Name: ${data.name}\nReply email: ${data.email}\n\n${data.message}`;
+  const text = `Name: ${data.name}\nReply email: ${data.email}${data.service ? `\nInterested in: ${data.service}` : ''}\n\n${data.message}`;
   try {
     const response = await fetcher('https://api.resend.com/emails', {
       method: 'POST',
